@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+      <PropertyGroup>
+        <TargetFrameworks>net10.0;net8.0</TargetFrameworks>
+	    <!-- NuGet package -->
+	    <IsPackable>true</IsPackable>   
+        <!-- Required identity -->
+        <PackageId>Kothf.Logging.File</PackageId>
+        <Version>2.10.1</Version>
+        <Authors>Kothf</Authors>
+        <Description>A library contains a lightweight implementation of the `Microsoft.Extensions.Logging.ILoggerProvider` interface for file logging.</Description>
+        <!-- Strongly recommended -->
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/kothoifung/Kothf.Logging.File.git</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/kothoifung/Kothf.Logging.File.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageTags>LoggerProvider;File;Logging</PackageTags>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Logging" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="..\README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
+</Project>
