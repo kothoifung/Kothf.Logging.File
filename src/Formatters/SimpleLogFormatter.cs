@@ -8,10 +8,23 @@ using System.Text;
 
 namespace Kothf.Logging.File.Formatters;
 
+/// <summary>
+/// Provides a simple, human-readable log formatter that outputs log entries in a single-line.
+/// </summary>
 public sealed class SimpleLogFormatter : ILogFormatter
 {
+    /// <summary>
+    /// Gets the name associated with this instance.
+    /// </summary>
     public string Name => "simple";
 
+    /// <summary>
+    /// Writes a formatted log entry to the specified string builder.
+    /// </summary>
+    /// <typeparam name="TState">The type of the state object associated with the log entry.</typeparam>
+    /// <param name="logEntry">The log entry to write.</param>
+    /// <param name="scopeProvider">The provider used to enumerate and format logging scopes.</param>
+    /// <param name="builder">The string builder to which the formatted log entry is appended.</param>
     public void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider scopeProvider, StringBuilder builder)
     {
         builder.Append(logEntry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff zzz"));

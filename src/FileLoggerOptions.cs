@@ -12,7 +12,7 @@ namespace Kothf.Logging.File;
 public sealed class FileLoggerOptions : BatchingLoggerOptions
 {
     private string _fileName = "log";
-    private string _extension = "txt";
+    private string _extension = ".txt";
     private string _logDirectory = "logs";
 
     /// <summary>
@@ -58,14 +58,4 @@ public sealed class FileLoggerOptions : BatchingLoggerOptions
     /// The periodicity for rolling over log files
     /// </summary>
     public PeriodicityOptions Periodicity { get; set; } = PeriodicityOptions.Daily;
-}
-
-/// <summary>
-/// The periodicity options
-/// </summary>
-public enum PeriodicityOptions
-{
-    Daily,
-    Hourly,
-    Monthly
 }

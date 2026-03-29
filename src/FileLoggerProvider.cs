@@ -11,7 +11,7 @@ using Kothf.Logging.File.Internal;
 namespace Kothf.Logging.File;
 
 /// <summary>
-/// A provider of <see cref="ConsoleLogger"/> instances.
+/// An <see cref="ILoggerProvider" /> that writes logs to a file
 /// </summary>
 [ProviderAlias("File")]
 public sealed class FileLoggerProvider : BatchingLoggerProvider
@@ -21,26 +21,32 @@ public sealed class FileLoggerProvider : BatchingLoggerProvider
     private readonly string? _extension;
     private readonly PeriodicityOptions _periodicity;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FileLoggerProvider"/> class.
+    /// </summary>
+    /// <param name="options">The options for configuring the file logger.</param>
+    /// <param name="formatter">The collection of log formatters to use.</param>
     public FileLoggerProvider(IOptionsMonitor<FileLoggerOptions> options, IEnumerable<ILogFormatter> formatter) : base(options, formatter)
     {
         var loggerOptions = options.CurrentValue;
         _path = loggerOptions.LogDirectory;
         _fileName = loggerOptions.FileName;
-        _extension = string.IsNullOrEmpty(loggerOptions.Extension) ? null : "." + loggerOptions.Extension;
+        _extension = string.IsNullOrEmpty(loggerOptions.Extension) ? null : loggerOptions.Extension;
         _periodicity = loggerOptions.Periodicity;
     }
 
+    /// <summary>
+    /// Asynchronously writes a collection of log messages to their respective log files.
+    /// </summary>
+    /// <param name="messages">The collection of log messages to write.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous write operation.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
     protected override async Task WriteMessagesAsync(IEnumerable<LogMessage> messages, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(_path);
-
         foreach (var group in messages.GroupBy(GetGrouping))
         {
             string baseName = GetBaseName(group.Key);
-            string filePath = GetFilePath(baseName);
-
-            if (filePath == null)
-                return;
+            string filePath = Path.Combine(_path, $"{baseName}{_extension}");
 
             using var streamWriter = System.IO.File.AppendText(filePath);
 
@@ -51,18 +57,21 @@ public sealed class FileLoggerProvider : BatchingLoggerProvider
         }
     }
 
-    private string GetBaseName((int Year, int Month, int Day, int Hour, int Minute) group) => _periodicity switch {
-        PeriodicityOptions.Hourly => $"{_fileName}{group.Year:0000}{group.Month:00}{group.Day:00}{group.Hour:00}",
+    /// <summary>
+    /// Generates the base file name according to the current periodicity setting.
+    /// </summary>
+    /// <param name="group">A tuple containing the year, month, and day that identify the data group for which to generate the base file name.</param>
+    /// <returns>A string representing the base file name for the specified group, formatted according to the periodicity option.</returns>
+    private string GetBaseName((int Year, int Month, int Day) group) => _periodicity switch {
         PeriodicityOptions.Daily => $"{_fileName}{group.Year:0000}{group.Month:00}{group.Day:00}",
         PeriodicityOptions.Monthly => $"{_fileName}{group.Year:0000}{group.Month:00}",
         _ => throw new InvalidDataException("Invalid periodicity")
     };
 
-    private string GetFilePath(string baseName)
-    {
-        string path = Path.Combine(_path, $"{baseName}{_extension}");
-        return path;
-    }
-
-    private (int Year, int Month, int Day, int Hour, int Minute) GetGrouping(LogMessage message) => (message.Timestamp.Year, message.Timestamp.Month, message.Timestamp.Day, message.Timestamp.Hour, message.Timestamp.Minute);
+    /// <summary>
+    /// Extracts the year, month, and day components from the timestamp of the specified log message.
+    /// </summary>
+    /// <param name="message">The log message from which to retrieve the date components.</param>
+    /// <returns>A tuple containing the year, month, and day values from the log message's timestamp.</returns>
+    private (int Year, int Month, int Day) GetGrouping(LogMessage message) => (message.Timestamp.Year, message.Timestamp.Month, message.Timestamp.Day);
 }

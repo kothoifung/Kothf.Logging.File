@@ -8,9 +8,22 @@ using System.Text;
 
 namespace Kothf.Logging.File.Formatters;
 
+/// <summary>
+/// A formatter that formats log entries for output.
+/// </summary>
 public interface ILogFormatter
 {
+    /// <summary>
+    /// Gets the name associated with the current instance.
+    /// </summary>
     string Name { get; }
 
+    /// <summary>
+    /// Writes a formatted log entry to the specified string builder.
+    /// </summary>
+    /// <typeparam name="TState">The type of the state object associated with the log entry.</typeparam>
+    /// <param name="logEntry">The log entry to write.</param>
+    /// <param name="scopeProvider">The provider used to supply external scope information for the log entry.</param>
+    /// <param name="stringBuilder">The string builder to which the formatted log entry is appended.</param>
     void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider scopeProvider, StringBuilder stringBuilder);
 }

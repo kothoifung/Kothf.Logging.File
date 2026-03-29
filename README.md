@@ -1,6 +1,6 @@
 # Kothf.Logging.File
 
-A library contains a lightweight implementation of the `Microsoft.Extensions.Logging.ILoggerProvider` interface for file logging.
+A lightweight file logger implementation for the Microsoft.Extensions.Logging framework.
 
 The code is heavily cribbed from the `Azure App Service Logging Provider` from the ASP.NET team.
 

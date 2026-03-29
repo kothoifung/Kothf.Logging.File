@@ -6,39 +6,51 @@ namespace Kothf.Logging.File.Internal;
 
 public class BatchingLoggerOptions
 {
+    private TimeSpan _flushPeriod = TimeSpan.FromSeconds(1);
+    private int? _batchSize = 1000;
+
+    /// <summary>
+    /// Gets or sets the period after which logs will be flushed to the store.
+    /// </summary>
     public TimeSpan FlushPeriod
     {
-        get;
+        get => _flushPeriod;
         set {
             if (value <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(value), $"{nameof(FlushPeriod)} must be positive.");
-            field = value;
-        }
-    } = TimeSpan.FromSeconds(1);
-
-    public int? BackgroundQueueSize
-    {
-        get;
-        set {
-            if (value < 0)
-                throw new ArgumentOutOfRangeException(nameof(value), $"{nameof(BackgroundQueueSize)} must be non-negative.");
-            field = value;
-        }
-    } = 1000;
-
-    public int? BatchSize
-    {
-        get;
-        set {
-            if (value <= 0)
-                throw new ArgumentOutOfRangeException(nameof(value), $"{nameof(BatchSize)} must be positive.");
-            field = value;
+            _flushPeriod = value;
         }
     }
 
+    /// <summary>
+    /// Gets or sets a maximum number of events to include in a single batch or null for no limit.
+    /// </summary>
+    /// Defaults to <c>null</c>.
+    public int? BatchSize
+    {
+        get => _batchSize;
+        set {
+            if (value <= 0)
+                throw new ArgumentOutOfRangeException(nameof(value), $"{nameof(BatchSize)} must be positive.");
+            _batchSize = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets value indicating if logger accepts and queues writes.
+    /// Defaults to <c>true</c>.
+    /// </summary>
     public bool IsEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether scopes should be included in the message.
+    /// Defaults to <c>false</c>.
+    /// </summary>
     public bool IncludeScopes { get; set; } = false;
 
+    /// <summary>
+    /// Gets of sets the name of the log message formatter to use.
+    /// Defaults to "simple" />.
+    /// </summary>
     public string FormatterName { get; set; } = "simple";
 }
