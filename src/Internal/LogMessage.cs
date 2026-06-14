@@ -7,15 +7,6 @@ namespace Kothf.Logging.File.Internal;
 /// <summary>
 /// Represents a log message
 /// </summary>
-public struct LogMessage
-{
-    /// <summary>
-    /// Gets or sets the date and time when the log occurred.
-    /// </summary>
-    public DateTimeOffset Timestamp { get; set; }
-
-    /// <summary>
-    /// Gets or sets the formatted text of the log message.
-    /// </summary>
-    public string Message { get; set; }
-}
+/// <param name="Timestamp">The date and time when the log occurred.</param>
+/// <param name="Message">The formatted text of the log message.</param>
+public readonly record struct LogMessage(DateTimeOffset Timestamp, string Message);

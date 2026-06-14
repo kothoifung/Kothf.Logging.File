@@ -12,25 +12,28 @@ namespace Kothf.Logging.File.Internal;
 public abstract class BatchingLoggerProvider : ILoggerProvider, ISupportExternalScope
 {
     private readonly List<LogMessage> _currentBatch = [];
-    private readonly TimeSpan _interval;
+    private readonly TimeSpan _flushPeriod;
     private readonly int? _batchSize;
     private readonly ILogFormatter _formatter;
+    private readonly bool _includeScopes;
 
     private Channel<LogMessage> _messageQueue;
     private Task _outputTask;
     private CancellationTokenSource _cancellationTokenSource;
 
-    private bool _includeScopes;
-    private IExternalScopeProvider _scopeProvider;
+    private IExternalScopeProvider? _scopeProvider;
 
     /// <summary>
     /// Initializes a new instance of the BatchingLoggerProvider class.
     /// </summary>
-    /// <param name="options">The options monitor that provides batching logger configuration settings.</param>
+    /// <param name="options">The options that provides batching logger configuration settings.</param>
     /// <param name="formatters">A collection of available log formatters.</param>
-    protected BatchingLoggerProvider(IOptionsMonitor<BatchingLoggerOptions> options, IEnumerable<ILogFormatter> formatters)
+    protected BatchingLoggerProvider(IOptions<BatchingLoggerOptions> options, IEnumerable<ILogFormatter> formatters)
     {
-        var loggerOptions = options.CurrentValue;
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(formatters);
+
+        var loggerOptions = options.Value;
 
         if (loggerOptions.BatchSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), $"{nameof(loggerOptions.BatchSize)} must be a positive number.");
@@ -40,20 +43,24 @@ public abstract class BatchingLoggerProvider : ILoggerProvider, ISupportExternal
         string formatterName = string.IsNullOrEmpty(loggerOptions.FormatterName)
             ? "simple"
             : loggerOptions.FormatterName.ToLowerInvariant();
-        var formatter = formatters.FirstOrDefault(x => x.Name == formatterName) ??
-            throw new ArgumentException($"Unknown formatter name {formatterName} - ensure custom formatters are registered correctly with the DI container", nameof(options));
+        _formatter = formatters.FirstOrDefault(x => string.Equals(x.Name, formatterName, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException($"Unknown formatter name {formatterName}", nameof(options));
 
-        _formatter = formatter;
-        _interval = loggerOptions.FlushPeriod;
+        _flushPeriod = loggerOptions.FlushPeriod;
         _batchSize = loggerOptions.BatchSize;
+        _includeScopes = loggerOptions.IncludeScopes;
 
-        UpdateOptions(options.CurrentValue);
+        IsEnabled = loggerOptions.IsEnabled;
+        if (IsEnabled)
+        {
+            Start();
+        }
     }
 
     /// <summary>
     /// Gets the external scope provider.
     /// </summary>
-    internal IExternalScopeProvider ScopeProvider => _includeScopes ? _scopeProvider : null;
+    internal IExternalScopeProvider? ScopeProvider => _includeScopes ? _scopeProvider : null;
 
     /// <summary>
     /// Gets a value indicating whether the feature or component is enabled.
@@ -65,10 +72,7 @@ public abstract class BatchingLoggerProvider : ILoggerProvider, ISupportExternal
     /// </summary>
     /// <param name="categoryName">The category name for messages produced by the logger.</param>
     /// <returns>An <see cref="ILogger"/> instance.</returns>
-    public ILogger CreateLogger(string categoryName)
-    {
-        return new BatchingLogger(this, categoryName, _formatter);
-    }
+    public ILogger CreateLogger(string categoryName) => new BatchingLogger(this, categoryName, _formatter);
 
     /// <summary>
     /// Disposes the logger provider, stopping any background processing if enabled.
@@ -88,19 +92,31 @@ public abstract class BatchingLoggerProvider : ILoggerProvider, ISupportExternal
     /// <param name="message">The log message to add.</param>
     internal void AddMessage(DateTimeOffset timestamp, string message)
     {
-        if (!_cancellationTokenSource.IsCancellationRequested)
+        if (_cancellationTokenSource is { IsCancellationRequested: false } && _messageQueue is not null)
         {
             _ = _messageQueue.Writer.TryWrite(new LogMessage { Timestamp = timestamp, Message = message });
         }
     }
 
     /// <summary>
-    /// Asynchronously writes a collection of log messages to the underlying log storage or output.
+    /// Flushes the current batch of log messages by writing them asynchronously.
     /// </summary>
-    /// <param name="messages">The collection of log messages to write.</param>
-    /// <param name="token">A cancellation token that can be used to cancel the asynchronous write operation.</param>
-    /// <returns>A task that represents the asynchronous write operation.</returns>
-    protected abstract Task WriteMessagesAsync(IEnumerable<LogMessage> messages, CancellationToken token);
+    /// <returns>A task that represents the asynchronous flush operation.</returns>
+    private async Task FlushBatchAsync(CancellationToken token)
+    {
+        if (_currentBatch.Count == 0)
+            return;
+
+        try
+        {
+            await WriteMessagesAsync(_currentBatch, token).ConfigureAwait(false);
+        }
+        catch { /* ignored */ }
+        finally
+        {
+            _currentBatch.Clear();
+        }
+    }
 
     /// <summary>
     /// Processes log messages from the internal queue and writes them in batches asynchronously until cancellation is requested.
@@ -108,63 +124,46 @@ public abstract class BatchingLoggerProvider : ILoggerProvider, ISupportExternal
     /// <returns>A task that represents the asynchronous operation of processing and writing log messages.</returns>
     private async Task ProcessLogQueue()
     {
-        while (!_cancellationTokenSource.IsCancellationRequested)
+        try
         {
-            int limit = _batchSize ?? int.MaxValue;
-
-            while (limit > 0 && _messageQueue.Reader.TryRead(out var message))
+            while (true)
             {
-                _currentBatch.Add(message);
-                limit--;
-            }
+                // 1. Try to read messages from the queue until we reach the batch size limit
+                int remaining = (_batchSize ?? int.MaxValue) - _currentBatch.Count;
 
-            if (_currentBatch.Count > 0)
-            {
+                while (remaining > 0 && _messageQueue.Reader.TryRead(out var message))
+                {
+                    _currentBatch.Add(message);
+                    remaining--;
+                }
+
+                // 2. If we have any messages in the current batch, flush them to file
+                if (_currentBatch.Count > 0)
+                {
+                    try
+                    {
+                        // Do not cancel flush operation
+                        await WriteMessagesAsync(_currentBatch, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch { /* ignored */ }
+                    finally
+                    {
+                        _currentBatch.Clear();
+                    }
+                }
+
+                // 3. Wait for the next flush period
                 try
                 {
-                    await WriteMessagesAsync(_currentBatch, _cancellationTokenSource.Token);
+                    await Task.Delay(_flushPeriod, _cancellationTokenSource.Token);
                 }
-                catch
+                catch (TaskCanceledException)
                 {
-                    // ignored
+                    break;
                 }
-
-                _currentBatch.Clear();
-            }
-
-            // Await next flush period or handle cancellation gracefully without crashing
-            try
-            {
-                await Task.Delay(_interval, _cancellationTokenSource.Token);
-            }
-            catch (TaskCanceledException)
-            {
-                break;
             }
         }
-    }
-
-    /// <summary>
-    /// Updates the batching logger's configuration based on the specified options.
-    /// </summary>
-    /// <param name="options">The options to apply to the batching logger. Cannot be null.</param>
-    private void UpdateOptions(BatchingLoggerOptions options)
-    {
-        bool oldIsEnabled = IsEnabled;
-        IsEnabled = options.IsEnabled;
-        _includeScopes = options.IncludeScopes;
-
-        if (oldIsEnabled != IsEnabled)
-        {
-            if (IsEnabled)
-            {
-                Start();
-            }
-            else
-            {
-                Stop();
-            }
-        }
+        catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested) { }
     }
 
     /// <summary>
@@ -186,29 +185,31 @@ public abstract class BatchingLoggerProvider : ILoggerProvider, ISupportExternal
     /// </summary>
     private void Stop()
     {
-        _cancellationTokenSource.Cancel();
-        _messageQueue.Writer.TryComplete();
+        _cancellationTokenSource?.Cancel();
+        _messageQueue?.Writer.TryComplete();
 
         try
         {
-            _outputTask.Wait(_interval);
+            _outputTask?.Wait(_flushPeriod);
         }
-        catch (TaskCanceledException)
-        {
-        }
-        catch (AggregateException ex) when (ex.InnerExceptions.Count == 1 && ex.InnerExceptions[0] is TaskCanceledException)
-        {
-        }
-        catch (AggregateException ex) when (ex.InnerExceptions.Count == 1 && ex.InnerExceptions[0] is OperationCanceledException)
-        {
-        }
+        catch (TaskCanceledException) { }
+        catch (AggregateException ex) when (ex.InnerExceptions.Count == 1 && ex.InnerExceptions[0] is TaskCanceledException) { }
+        catch (AggregateException ex) when (ex.InnerExceptions.Count == 1 && ex.InnerExceptions[0] is OperationCanceledException) { }
     }
+
+    /// <summary>
+    /// Asynchronously writes a collection of log messages to the underlying log storage or output.
+    /// </summary>
+    /// <param name="messages">The collection of log messages to write.</param>
+    /// <param name="token">A cancellation token that can be used to cancel the asynchronous write operation.</param>
+    /// <returns>A task that represents the asynchronous write operation.</returns>
+    protected abstract Task WriteMessagesAsync(IEnumerable<LogMessage> messages, CancellationToken token);
 
     /// <summary>
     /// Sets the external scope provider to be used for creating logging scopes.
     /// </summary>
     /// <param name="scopeProvider">The external scope provider that supplies scope information for logging.</param>
-    void ISupportExternalScope.SetScopeProvider(IExternalScopeProvider scopeProvider)
+    void ISupportExternalScope.SetScopeProvider(IExternalScopeProvider? scopeProvider)
     {
         _scopeProvider = scopeProvider;
     }

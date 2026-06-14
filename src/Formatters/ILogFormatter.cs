@@ -25,5 +25,5 @@ public interface ILogFormatter
     /// <param name="logEntry">The log entry to write.</param>
     /// <param name="scopeProvider">The provider used to supply external scope information for the log entry.</param>
     /// <param name="stringBuilder">The string builder to which the formatted log entry is appended.</param>
-    void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider scopeProvider, StringBuilder stringBuilder);
+    void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, StringBuilder stringBuilder);
 }

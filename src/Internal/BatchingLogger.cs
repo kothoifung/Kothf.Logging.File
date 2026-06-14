@@ -47,10 +47,7 @@ public sealed class BatchingLogger : ILogger
     /// </summary>
     /// <param name="logLevel">The log level to check for enabled status.</param>
     /// <returns>true if logging is enabled for the specified log level; otherwise, false.</returns>
-    public bool IsEnabled(LogLevel logLevel)
-    {
-        return _provider.IsEnabled;
-    }
+    public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None && _provider.IsEnabled;
 
     /// <summary>
     /// Writes a log entry.
@@ -61,16 +58,22 @@ public sealed class BatchingLogger : ILogger
     /// <param name="state">The state to associate with the log entry.</param>
     /// <param name="exception">The exception to associate with the log entry, if any.</param>
     /// <param name="formatter">The formatter function to format the log entry.</param>
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception, string> formatter)
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
-        if (!IsEnabled(logLevel))
-        { return; }
+        if (!IsEnabled(logLevel)) return;
 
         var timestamp = DateTimeOffset.Now;
-        var logEntry = new LogEntry<TState>(timestamp, logLevel, _category, eventId, state, exception, formatter!);
-        var builder = new StringBuilder(128);
+        var entry = new LogEntry<TState>(timestamp, logLevel, _category, eventId, state, exception, formatter);
 
-        _formatter.Write(in logEntry, _provider.ScopeProvider, builder);
-        _provider.AddMessage(timestamp, builder.ToString());
+        var sb = StringBuilderCache.Acquire(512);
+        try
+        {
+            _formatter.Write(in entry, _provider.ScopeProvider, sb);
+            _provider.AddMessage(timestamp, sb.ToString());
+        }
+        finally
+        {
+            StringBuilderCache.Release(sb);
+        }
     }
 }

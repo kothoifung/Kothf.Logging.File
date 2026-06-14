@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Kothf.Logging.File.Formatters;
 
@@ -19,8 +20,11 @@ public static class FileLoggerExtensions
     /// <param name="builder">The <see cref="ILoggingBuilder"/> to use.</param>
     public static ILoggingBuilder AddFile(this ILoggingBuilder builder)
     {
-        builder.Services.AddSingleton<ILogFormatter, SimpleLogFormatter>();
-        builder.Services.AddSingleton<ILoggerProvider, FileLoggerProvider>();
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILogFormatter, SimpleLogFormatter>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, FileLoggerProvider>());
+
         return builder;
     }
 
@@ -31,10 +35,12 @@ public static class FileLoggerExtensions
     /// <param name="configure">A delegate to configure the <see cref="FileLogger"/>.</param>
     public static ILoggingBuilder AddFile(this ILoggingBuilder builder, Action<FileLoggerOptions> configure)
     {
+        ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(configure);
 
         builder.AddFile();
         builder.Services.Configure(configure);
+
         return builder;
     }
 }

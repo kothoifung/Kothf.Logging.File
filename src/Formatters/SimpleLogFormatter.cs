@@ -25,7 +25,7 @@ public sealed class SimpleLogFormatter : ILogFormatter
     /// <param name="logEntry">The log entry to write.</param>
     /// <param name="scopeProvider">The provider used to enumerate and format logging scopes.</param>
     /// <param name="builder">The string builder to which the formatted log entry is appended.</param>
-    public void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider scopeProvider, StringBuilder builder)
+    public void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, StringBuilder builder)
     {
         builder.Append(logEntry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff zzz"));
         builder.Append(" [");

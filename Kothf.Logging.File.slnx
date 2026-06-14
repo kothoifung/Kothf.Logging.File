@@ -1,4 +1,3 @@
 <Solution>
     <Project Path="src/Kothf.Logging.File.csproj" />
-    <Project Path="tests/Kothf.Logging.File.Tests.csproj" />
 </Solution>
